@@ -1,85 +1,30 @@
-const GEMINI_API_KEY = "AIzaSyBZneyhOjQ8S_TcsMTg2tK8hi0AsKfhRW4";
+const serverUrl = "https://wingman-server-h6de.onrender.com";
 
 // Upload file to Flask
-async function uploadFileToGemini(file) {
+async function extractTextFromFile(file) {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`http://127.0.0.1:5000/extract-text`, {
+  const res = await fetch(`${serverUrl}/extract/text`, {
     method: "POST",
     body: formData
   });
 
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || "File upload failed");
-  return data; // should contain extracted text
+  return data;
 }
 
 // Analyze with Gemini and return JSON
-async function analyzeWithGemini(jobDescription, extractedText) {
-  const prompt = `
-    You are an AI career assistant.
-    You will receive:
-    1. A job description (plain text).
-    2. A resume's extracted text.
+async function analyzeWithGemini(jobTitle, jobDescription, extractedText) {
+  const res = await fetch(`${serverUrl}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jobTitle, jobDescription, extractedText })
+  });
 
-    Your task:
-    - Avoid speaking third person.
-    - Compare the resume against the job description.
-    - Decide if the candidate should apply ("Yes") or not ("No").
-    - Justify your decision in 1 informed sentence, by speaking directly to the candidate, not in third person.
-    - Provide a match score from 0 to 100.
-    - ONLY generate a "coverLetter" if decision is "Yes" AND score is 60 or higher.
-    - If decision is "No" or score < 60, set "coverLetter" to an empty string "".
-    - If decision is "Yes", based on the job requirements, suggest the exact resume enhancements to make it ATS friendly and increase the chances of the candidate at being considered.
-    - Speak directly to the user, not in third person, e.g "You do not have the required qualification for this role."
-
-    Respond ONLY in this exact JSON format with no extra text:
-
-    {
-      "decision": "Yes" or "No",
-      "reason": "<1 sentence explaining decision>",
-      "score": <percentage number from 0 to 100>,
-      "coverLetter": "<cover letter text or empty string>",
-      "resumeEnhancements": "<suggestions for ATS friendly resume>"
-    }
-
-    Job Description:
-    ${jobDescription}
-
-    Resume:
-    ${extractedText}
-  `;
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
-      })
-    }
-  );
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || "Gemini analysis failed");
-
-  let textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-  textOutput = textOutput.trim();
-  if (textOutput.startsWith("```")) {
-    textOutput = textOutput
-      .replace(/^```json/i, "")
-      .replace(/^```/, "")
-      .replace(/```$/, "")
-      .trim();
-  }
-
-  try {
-    return JSON.parse(textOutput);
-  } catch (err) {
-    throw new Error("Invalid JSON from Gemini");
-  }
+  if (!res.ok) throw new Error("Analysis failed");
+  return await res.json();
 }
 
 // Helper: decode base64 -> File
@@ -100,8 +45,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const blob = base64ToBlob(message.fileBase64, "application/octet-stream");
         const file = new File([blob], message.fileName);
 
-        const { text: extractedText } = await uploadFileToGemini(file);
-        const result = await analyzeWithGemini(message.jobDescription, extractedText);
+        const { text: extractedText } = await extractTextFromFile(file);
+        const result = await analyzeWithGemini(message.jobTitle, message.jobDescription, extractedText);
 
         sendResponse({ result });
       } catch (err) {
@@ -111,3 +56,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // keep channel open
   }
 });
+
+const jobKeywords = [
+  "job", "career", "vacancy", "hiring", "apply", "opportunity",
+  "jobs", "work-with-us", "position", "employment"
+];
+
+// Listen for tab updates
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !tab.url) return;
+
+  const url = tab.url.toLowerCase();
+
+  // Skip if already in our manifest matches
+  if (matchesPopularPortals(url)) return;
+
+  // Inject if URL contains job-related keywords
+  if (jobKeywords.some(keyword => url.includes(keyword))) {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ["dist/content.js"]
+    });
+  }
+});
+
+function matchesPopularPortals(url) {
+  const portals = [
+    "linkedin.com/jobs",
+    "indeed.com",
+    "glassdoor.com",
+    "monster.com",
+    "ziprecruiter.com",
+    "simplyhired.com",
+    "careerbuilder.com",
+    "jobstreet",
+    "seek.com",
+    "reed.co.uk",
+    "totaljobs.com",
+    "workopolis.com",
+    "bayt.com",
+    "naukri.com",
+    "foundit.in",
+    "jobsdb",
+    "stepstone",
+    "adzuna"
+  ];
+  return portals.some(portal => url.includes(portal));
+}

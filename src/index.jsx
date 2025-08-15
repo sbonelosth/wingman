@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import logo from "../assets/icons/icon-32.png";
 
+const serverUrl = "https://wingman-server-h6de.onrender.com";
+
 function Popup() {
     const [jobDesc, setJobDesc] = useState("");
     const [jobTitle, setJobTitle] = useState("");
@@ -45,7 +47,7 @@ function Popup() {
 
     const handleAnalyze = async () => {
         if (!jobDesc || !file) {
-            setError("Please provide both job description and resume file.");
+            setError("Job description and Resume are both required");
             return;
         }
         setLoading(true);
@@ -56,6 +58,7 @@ function Popup() {
         chrome.runtime.sendMessage(
             {
                 type: "ANALYZE_RESUME",
+                jobTitle: jobTitle,
                 jobDescription: jobDesc,
                 fileName: file.name,
                 fileBase64: base64File
@@ -91,15 +94,36 @@ function Popup() {
     };
 
     const downloadAsDocx = async () => {
-        const { Document, Packer, Paragraph } = await import("docx");
-        const doc = new Document({
-            sections: [{ children: [new Paragraph(coverLetter)] }]
-        });
-        const blob = await Packer.toBlob(doc);
-        const link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "cover_letter.docx";
-        link.click();
+        try {
+            const response = await fetch(`${serverUrl}/text/to/docx`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ text: coverLetter })
+            });
+
+            if (!response.ok) {
+                throw new Error("Failed to download file");
+            }
+
+            // Convert response to Blob
+            const blob = await response.blob();
+
+            // Create a temporary download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "cover_letter.docx";
+            document.body.appendChild(a);
+            a.click();
+
+            // Clean up
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error downloading DOCX:", error);
+        }
     };
 
     const AnimatedEllipses = () => {
@@ -119,13 +143,18 @@ function Popup() {
                     <img src={logo} alt="Wingman Icon" className="icon" />
                     <h2 className="title">Wingman</h2>
                 </div>
-                <button
-                    className="theme-toggle"
-                    onClick={() => setDarkMode(!darkMode)}
-                    title="Toggle light/dark mode"
-                >
-                    {darkMode ? "☀️" : "🌙"}
-                </button>
+                <div className="header-actions">
+                    <a href="https://github.com/sbonelosth/wingman/issues/new" target="_blank" rel="noopener noreferrer" className="report-issue">
+                        <span className="label">Report a Bug</span>
+                    </a>
+                    <button
+                        className="theme-toggle"
+                        onClick={() => setDarkMode(!darkMode)}
+                        title="Toggle light/dark mode"
+                    >
+                        {darkMode ? "☀️" : "🌙"}
+                    </button>
+                </div>
             </div>
 
             <h3><span className="label">Role: </span>{jobTitle}</h3>
@@ -200,6 +229,8 @@ function Popup() {
                     --accent: #000000;
                     --score-good: #222;
                     --score-bad: #555;
+                    --link: #cfa043;
+                    --error: #a2342e;
                 }
 
                 .dark {
@@ -248,6 +279,7 @@ function Popup() {
                 
                 .title {
                     font-family: 'MontereyMediumFLF', sans-serif;
+                    font-size: 18px;
                 }
 
                 .icon {
@@ -256,16 +288,34 @@ function Popup() {
                     margin-right: 8px;
                 }
 
+                .header-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .report-issue {
+                    text-decoration: none;
+                    font-size: 11px;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    transition: all 0.2s ease-in-out;
+                }
+
+                a {
+                    color: var(--link);
+                    text-decoration: none;
+                }
+
+                a:hover {
+                    text-decoration: underline;
+                }
+
                 .theme-toggle {
                     background: none;
                     border: none;
                     cursor: pointer;
                     font-size: 18px;
-                }
-
-                .title {
-                    font-size: 18px;
-                    font-weight: 600;
                 }
 
                 .job-desc,
@@ -298,7 +348,7 @@ function Popup() {
                 }
 
                 .error-text {
-                    color: red;
+                    color: var(--error);
                 }
 
                 .result-card {
@@ -386,7 +436,7 @@ function Popup() {
                     text-align: center;
                     font-size: 10px;
                     border-top: 1px solid var(--text-secondary);
-                    padding-top: 10px;
+                    padding: 10px 0;
                 }
             `}
             </style>

@@ -27,7 +27,26 @@
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "*://*.linkedin.com/jobs/*",
+        "*://*.indeed.com/*",
+        "*://*.glassdoor.com/*",
+        "*://*.monster.com/*",
+        "*://*.ziprecruiter.com/*",
+        "*://*.simplyhired.com/*",
+        "*://*.careerbuilder.com/*",
+        "*://*.jobstreet.com/*",
+        "*://*.seek.com.au/*",
+        "*://*.seek.co.nz/*",
+        "*://*.reed.co.uk/*",
+        "*://*.totaljobs.com/*",
+        "*://*.workopolis.com/*",
+        "*://*.bayt.com/*",
+        "*://*.naukri.com/*",
+        "*://*.foundit.in/*",
+        "*://*.jobsdb.com/*",
+        "*://*.stepstone.com/*",
+        "*://*.myjobstreet.com/*",
+        "*://*.adzuna.com/*"
       ],
       "js": [
         "dist/content.js"
